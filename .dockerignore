@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+dist
+npm-debug.log
+Dockerfile.hf
+.env
+.env.*
+!.env.example

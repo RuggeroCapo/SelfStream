@@ -1,0 +1,33 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.selfstream\n"
+"Language: en_GB\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgctxt "#30000"
+msgid "SelfStream"
+msgstr "SelfStream"
+
+msgctxt "#30001"
+msgid "Connection"
+msgstr "Connection"
+
+msgctxt "#30002"
+msgid "Backend"
+msgstr "Backend"
+
+msgctxt "#30010"
+msgid "Backend Base URL"
+msgstr "Backend Base URL"
+
+msgctxt "#30011"
+msgid "Preferred Language"
+msgstr "Preferred Language"
+
+msgctxt "#30012"
+msgid "Autoplay Single Source"
+msgstr "Autoplay Single Source"
+
+msgctxt "#30013"
+msgid "Enable Experimental Adapters"
+msgstr "Enable Experimental Adapters"

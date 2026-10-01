@@ -4,8 +4,8 @@ import { getVixCloudStreams } from './vixcloud';
 import { getCinemaCityStreams, extractFreshStreamUrl, FreshStream, SubtitleTrack } from './cinemacity';
 import { decodeProxyToken, resolveUrl, makeProxyToken, getAddonBase } from './proxy';
 import { decodeConfig, UserConfig, DEFAULT_CONFIG } from './config';
+import { registerMediaPlaylist, serveSegment } from './segment-cache';
 import { request } from 'undici';
-import { pipeline } from 'stream/promises';
 const express = require('express');
 import { generateLandingPage } from './landing';
 
@@ -416,6 +416,7 @@ app.get('/proxy/cc/manifest.m3u8', async (req: any, res: any) => {
             // Media playlist: rewrite segments
             const lines = text.split(/\r?\n/);
             const result: string[] = [];
+            const upstreamSegments: string[] = [];
             for (const line of lines) {
                 if ((line.includes('#EXT-X-KEY:') || line.includes('#EXT-X-MAP:')) && line.includes('URI=')) {
                     const rewritten = line.replace(/URI="([^"]+)"/g, (_m: string, uri: string) => {
@@ -426,11 +427,15 @@ app.get('/proxy/cc/manifest.m3u8', async (req: any, res: any) => {
                     result.push(rewritten);
                 } else if (!line.startsWith('#') && line.trim()) {
                     const absUrl = resolveUrl(freshUrl, line.trim());
+                    upstreamSegments.push(absUrl);
                     const segToken = makeProxyToken(absUrl, streamHeaders, 30 * 60 * 1000);
                     result.push(`${addonBase}/proxy/hls/segment.ts?token=${segToken}`);
                 } else {
                     result.push(line);
                 }
+            }
+            if (upstreamSegments.length > 0) {
+                registerMediaPlaylist(upstreamSegments, streamHeaders);
             }
             res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
             res.setHeader('Cache-Control', 'no-store');
@@ -546,6 +551,7 @@ app.get('/proxy/hls/manifest.m3u8', async (req: any, res: any) => {
         // Media playlist or fallback (if no variants found): rewrite segment URLs
         const lines = text.split(/\r?\n/);
         const result: string[] = [];
+        const upstreamSegments: string[] = [];
         for (const line of lines) {
             if ((line.includes('#EXT-X-KEY:') || line.includes('#EXT-X-MAP:')) && line.includes('URI=')) {
                 const rewritten = line.replace(/URI="([^"]+)"/g, (_match: string, uri: string) => {
@@ -556,11 +562,15 @@ app.get('/proxy/hls/manifest.m3u8', async (req: any, res: any) => {
                 result.push(rewritten);
             } else if (!line.startsWith('#') && line.trim()) {
                 const absUrl = resolveUrl(upstream, line.trim());
+                upstreamSegments.push(absUrl);
                 const segToken = makeProxyToken(absUrl, headers);
                 result.push(`${addonBase}/proxy/hls/segment.ts?token=${segToken}`);
             } else {
                 result.push(line);
             }
+        }
+        if (upstreamSegments.length > 0) {
+            registerMediaPlaylist(upstreamSegments, headers);
         }
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
         res.setHeader('Cache-Control', 'no-store');
@@ -571,30 +581,7 @@ app.get('/proxy/hls/manifest.m3u8', async (req: any, res: any) => {
     }
 });
 
-/**
- * Some providers prepend a fake 8-byte PNG signature to TS segments.
- * Strip it only when bytes after the header still match TS sync markers.
- */
-function stripFakePngHeader(content: Buffer): Buffer {
-    const pngSig = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-    if (content.length <= 8 || !content.subarray(0, 8).equals(pngSig)) {
-        return content;
-    }
-
-    const tsPayload = content.subarray(8);
-    // MPEG-TS sync byte is 0x47
-    if (tsPayload.length === 0 || tsPayload[0] !== 0x47) {
-        return content;
-    }
-    if (tsPayload.length > 188 && tsPayload[188] !== 0x47) {
-        return content;
-    }
-
-    console.log(`[HLS Proxy] Removed fake PNG header from TS segment (${content.length} -> ${tsPayload.length} bytes)`);
-    return tsPayload;
-}
-
-// ── HLS Proxy: segment proxy (streaming with backpressure) ──
+// ── HLS Proxy: segment proxy (cached + prefetch) ──
 app.get('/proxy/hls/segment.ts', async (req: any, res: any) => {
     try {
         const token = req.query.token;
@@ -608,19 +595,8 @@ app.get('/proxy/hls/segment.ts', async (req: any, res: any) => {
 
         if (!upstream) return res.status(400).send('Missing upstream URL');
 
-        const { body, statusCode, headers: respHeaders } = await request(upstream, { headers });
-        if (statusCode !== 200) {
-            return res.status(statusCode || 502).send('Upstream error');
-        }
-
-        const contentType = respHeaders['content-type'] || 'video/mp2t';
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-
-        // Stream with proper backpressure: CDN → player
-        await pipeline(body, res);
+        await serveSegment(upstream, headers, res);
     } catch (e: any) {
-        // AbortError / ERR_STREAM_PREMATURE_CLOSE = player disconnected, not a real error
         if (e?.code === 'ERR_STREAM_PREMATURE_CLOSE' || e?.name === 'AbortError') return;
         console.error('[HLS Segment Proxy] error:', e?.message || e);
         if (!res.headersSent) {

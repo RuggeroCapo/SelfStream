@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="plugin.video.selfstream"
+       version="0.1.0"
+       name="SelfStream"
+       provider-name="SelfStream">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1" />
+  </requires>
+  <extension point="xbmc.python.pluginsource" library="main.py">
+    <provides>video</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Kodi front-end for the SelfStream VixSrc backend</summary>
+    <description lang="en_GB">Search, browse, and play VixSrc-backed streams through a self-hosted backend.</description>
+    <license>ISC</license>
+    <platform>all</platform>
+    <source>https://github.com/example/SelfStream</source>
+    <news>Initial Kodi backend client release.</news>
+  </extension>
+</addon>

@@ -7,7 +7,8 @@
   "scripts": {
     "build": "npx tsc",
     "start": "node dist/addon.js",
-    "dev": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\", \\\"verbatimModuleSyntax\\\":false}\" src/addon.ts"
+    "dev": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\", \\\"verbatimModuleSyntax\\\":false}\" src/addon.ts",
+    "control": "node scripts/control-server.js"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +16,7 @@
   "dependencies": {
     "cheerio": "^1.0.0",
     "express": "^4.21.1",
+    "pm2": "^6.0.14",
     "stremio-addon-sdk": "^1.6.10",
     "undici": "^6.20.1"
   },

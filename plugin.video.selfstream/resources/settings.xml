@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings version="1">
+  <section id="general" label="30000">
+    <category id="connection" label="30001">
+      <group id="backend" label="30002">
+        <setting id="backend_base_url" type="string" label="30010" default="http://127.0.0.1:7100" />
+        <setting id="preferred_language" type="string" label="30011" default="en" />
+        <setting id="autoplay_single_source" type="boolean" label="30012" default="true" />
+        <setting id="enable_experimental_adapters" type="boolean" label="30013" default="false" />
+      </group>
+    </category>
+  </section>
+</settings>

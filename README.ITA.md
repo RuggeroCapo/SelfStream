@@ -30,9 +30,131 @@ Addon leggero e self-hosted per Stremio con **3 sorgenti configurabili**, proxy 
 
 ## Deploy
 
-> **Prima di tutto**: Fai il fork di questo repo e aggiorna il Dockerfile con il tuo username GitHub.
+> Per la stack Docker locale qui sotto usa direttamente il `Dockerfile` incluso.
+> Aggiorna `Dockerfile.hf` solo se fai deploy su Hugging Face tramite il tuo fork.
 >
 > [📺 Video Guida](https://www.youtube.com/watch?v=nnhwo0C5x3I)
+
+### Docker locale
+
+Lo stack Docker del repo è stato semplificato per il setup attuale:
+- `selfstream` locale su `127.0.0.1:7000`
+- profilo opzionale `vpn-egress` con `gluetun`
+- profilo opzionale `public-web` con `caddy` per un URL pubblico stabile
+
+Avvio base:
+
+```bash
+cp .env.example .env
+docker compose up -d --build selfstream
+```
+
+Manifest locale:
+
+```text
+http://127.0.0.1:7000/manifest.json
+```
+
+### DuckDNS + OpenWRT + Caddy
+
+Se vuoi un URL pubblico **stabile e gratis**, il setup consigliato qui è:
+
+- `DuckDNS` per il sottodominio gratuito
+- `OpenWRT` per aggiornare il record DDNS e fare il port forwarding
+- `Caddy` per HTTPS automatico e reverse proxy verso `127.0.0.1:7000`
+
+Prerequisiti:
+- devi avere un IPv4 pubblico raggiungibile; se sei sotto CGNAT questa soluzione non funziona
+- sul router OpenWRT devi inoltrare `TCP 80` e `TCP 443` verso l'IP LAN della macchina che esegue Docker
+- su OpenWRT conviene usare i pacchetti `ddns-scripts`, `ddns-scripts-services` e `luci-app-ddns` per aggiornare DuckDNS automaticamente
+
+Configura `.env`:
+
+```bash
+PUBLIC_DOMAIN=tuonome.duckdns.org
+```
+
+Avvio senza VPN:
+
+```bash
+docker compose up -d --build selfstream
+docker compose --profile public-web up -d caddy
+```
+
+Avvio con VPN solo per l'egress:
+
+```bash
+docker compose stop selfstream
+docker compose --profile vpn-egress up -d --build gluetun selfstream-vpn
+docker compose --profile public-web up -d caddy
+```
+
+Note:
+- `caddy` termina TLS pubblicamente e inoltra tutto a `host.docker.internal:7000`, quindi funziona sia con `selfstream` sia con `selfstream-vpn`
+- non tenere attivi `selfstream` e `selfstream-vpn` insieme: usano la stessa porta locale
+- una volta propagato DuckDNS, il manifest pubblico sarà:
+
+```text
+https://tuonome.duckdns.org/manifest.json
+```
+
+Passi lato OpenWRT:
+1. crea il sottodominio su DuckDNS e copia il token
+2. configura un servizio DDNS DuckDNS su OpenWRT per aggiornare quel record
+3. crea due port forward WAN -> host Docker:
+   - `TCP 80 -> 80`
+   - `TCP 443 -> 443`
+4. verifica dall'esterno che `http://tuonome.duckdns.org` risponda e lascia a Caddy il completamento del certificato Let's Encrypt
+
+Se vuoi solo un fallback temporaneo senza toccare il router, `ngrok` o `Tailscale Funnel` restano opzioni rapide ma non sono più il percorso consigliato qui.
+
+### VPN solo per l'egress con Gluetun
+
+Se vuoi che **solo le richieste verso i provider di streaming** escano da una VPN, senza mettere sotto VPN tutto il PC, usa il profilo `vpn-egress`.
+
+Il modello è:
+- `client -> Caddy su 80/443`
+- `Caddy -> localhost:7000`
+- `gluetun -> selfstream-vpn -> provider finale`
+
+Configurazione minima in `.env`:
+
+```bash
+GLUETUN_VPN_SERVICE_PROVIDER=protonvpn
+GLUETUN_VPN_TYPE=wireguard
+GLUETUN_SERVER_COUNTRIES=Switzerland
+GLUETUN_WIREGUARD_PRIVATE_KEY=...
+GLUETUN_WIREGUARD_ADDRESSES=...
+```
+
+Note:
+- Per `Mullvad`, `ProtonVPN` e simili conviene preferire `wireguard` per latenza e throughput.
+- Se il provider richiede credenziali OpenVPN, usa `GLUETUN_OPENVPN_USER` e `GLUETUN_OPENVPN_PASSWORD` al posto delle variabili WireGuard.
+
+Avvio:
+
+```bash
+docker compose stop selfstream
+docker compose --profile vpn-egress up -d --build gluetun selfstream-vpn
+```
+
+Verifiche:
+
+```bash
+curl http://127.0.0.1:7000/manifest.json
+docker compose exec selfstream-vpn wget -qO- https://api.ipify.org
+```
+
+Se vuoi esporlo pubblicamente con DuckDNS:
+
+```bash
+docker compose --profile public-web up -d caddy
+```
+
+Performance:
+- C'è un overhead VPN, quindi un po' di degrado esiste.
+- Con `wireguard` e un server vicino di solito il degrado è moderato.
+- Per questo caso d'uso il compromesso è buono: solo l'egress di SelfStream passa nella VPN, mentre l'ingresso pubblico resta semplice e stabile via Caddy.
 
 ### Consigliato: VPS / Raspberry Pi (Massima compatibilità)
 

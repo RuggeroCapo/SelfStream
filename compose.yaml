@@ -1,0 +1,88 @@
+x-selfstream-common: &selfstream-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  init: true
+  expose:
+    - "7000"
+  environment:
+    PORT: 7000
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:7000/manifest.json >/dev/null || exit 1"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 10s
+
+services:
+  selfstream:
+    <<: *selfstream-common
+    ports:
+      - "${SELFSTREAM_LOCAL_PORT:-7000}:7000"
+
+  caddy:
+    image: caddy:2
+    profiles:
+      - public-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-}
+
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    profiles:
+      - vpn-egress
+    network_mode: bridge
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${SELFSTREAM_LOCAL_PORT:-7000}:7000"
+    volumes:
+      - gluetun_state:/gluetun
+    environment:
+      VPN_SERVICE_PROVIDER: ${GLUETUN_VPN_SERVICE_PROVIDER:-}
+      VPN_TYPE: ${GLUETUN_VPN_TYPE:-wireguard}
+      SERVER_COUNTRIES: ${GLUETUN_SERVER_COUNTRIES:-}
+      WIREGUARD_PRIVATE_KEY: ${GLUETUN_WIREGUARD_PRIVATE_KEY:-}
+      WIREGUARD_ADDRESSES: ${GLUETUN_WIREGUARD_ADDRESSES:-}
+      OPENVPN_USER: ${GLUETUN_OPENVPN_USER:-}
+      OPENVPN_PASSWORD: ${GLUETUN_OPENVPN_PASSWORD:-}
+      FIREWALL_INPUT_PORTS: "7000"
+      TZ: ${TZ:-Europe/Rome}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  selfstream-vpn:
+    <<: *selfstream-common
+    profiles:
+      - vpn-egress
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    expose: []
+    network_mode: "service:gluetun"
+
+volumes:
+  caddy_data:
+  caddy_config:
+  gluetun_state:
