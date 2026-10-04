@@ -6,5 +6,9 @@ export const config = {
     extractTimeoutMs: parseInt(process.env.EXTRACT_TIMEOUT_MS || '20000', 10),
     extractCacheMs: 2 * 60 * 1000,
     maxBrowserPages: parseInt(process.env.MAX_BROWSER_PAGES || '2', 10),
+    // HMAC key for /proxy tokens; set it so links survive restarts
+    proxySecret: process.env.PROXY_SECRET || '',
+    // Variant playlists are re-requested with the same token for the whole event
+    proxyTokenTtlMs: parseInt(process.env.PROXY_TOKEN_TTL_MS || String(6 * 3600 * 1000), 10),
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };

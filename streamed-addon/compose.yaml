@@ -9,3 +9,4 @@ services:
     environment:
       PORT: 7010
       # PUBLIC_URL: https://your.domain   # set when behind a reverse proxy
+      # PROXY_SECRET: change-me            # keeps playback links valid across restarts

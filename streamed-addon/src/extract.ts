@@ -1,4 +1,4 @@
-import { chromium, Browser } from 'playwright-core';
+import { chromium, Browser, BrowserContext } from 'playwright-core';
 import { config } from './config';
 
 export interface Extracted {
@@ -15,6 +15,8 @@ function getBrowser(): Promise<Browser> {
                 b.on('disconnected', () => (browserP = null));
                 return b;
             });
+        // Don't keep a failed launch around: retry on the next play
+        browserP.catch(() => (browserP = null));
     }
     return browserP;
 }
@@ -35,28 +37,34 @@ function release() {
 
 async function run(embedUrl: string): Promise<Extracted> {
     await slot();
-    const browser = await getBrowser();
-    const ctx = await browser.newContext({ userAgent: config.userAgent });
+    let ctx: BrowserContext | undefined;
+    let timer: NodeJS.Timeout | undefined;
     try {
+        const browser = await getBrowser();
+        ctx = await browser.newContext({ userAgent: config.userAgent });
         const page = await ctx.newPage();
+        // Intercept the playlist request and abort it: the CDN binds the playlist token to the
+        // first client that fetches it, so the browser must never load it, only our proxy.
         const found = new Promise<Extracted>((resolve) => {
-            page.on('request', (req) => {
-                const u = req.url();
-                if (/\.m3u8(\?|$)/i.test(u)) {
-                    const h = req.headers();
-                    const headers: Record<string, string> = { 'User-Agent': config.userAgent };
-                    if (h['referer']) headers['Referer'] = h['referer'];
-                    if (h['origin']) headers['Origin'] = h['origin'];
-                    resolve({ url: u, headers });
-                }
-            });
+            page.route(/\.m3u8(\?|$)/i, async (route) => {
+                const req = route.request();
+                // headers() omits security-related headers; allHeaders() has what would be sent
+                const h = await req.allHeaders().catch((): Record<string, string> => ({}));
+                const headers: Record<string, string> = { 'User-Agent': config.userAgent };
+                if (h['referer']) headers['Referer'] = h['referer'];
+                if (h['origin']) headers['Origin'] = h['origin'];
+                resolve({ url: req.url(), headers });
+                await route.abort().catch(() => {});
+            }).catch(() => {});
         });
-        const timeout = new Promise<never>((_, rej) =>
-            setTimeout(() => rej(new Error('m3u8 extraction timed out')), config.extractTimeoutMs));
+        const timeout = new Promise<never>((_, rej) => {
+            timer = setTimeout(() => rej(new Error('m3u8 extraction timed out')), config.extractTimeoutMs);
+        });
         page.goto(embedUrl, { referer: config.apiBase + '/', waitUntil: 'domcontentloaded' }).catch(() => {});
         return await Promise.race([found, timeout]);
     } finally {
-        await ctx.close().catch(() => {});
+        clearTimeout(timer);
+        await ctx?.close().catch(() => {});
         release();
     }
 }

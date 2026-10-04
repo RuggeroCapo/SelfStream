@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.21.1",
-    "playwright-core": "^1.56.1",
+    "playwright-core": "1.56.1",
     "stremio-addon-sdk": "^1.6.10",
     "undici": "^6.20.1"
   },

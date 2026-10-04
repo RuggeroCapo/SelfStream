@@ -1,9 +1,10 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import express from 'express';
 import { addonBuilder, getRouter } from 'stremio-addon-sdk';
 import { config } from './config';
 import { getMatches, getMatch, getStreams, imageUrl, Match } from './api';
 import { extractM3u8 } from './extract';
-import { decodeToken, encodeToken, proxyFetch } from './proxy';
+import { decodeToken, proxyFetch } from './proxy';
 
 const SPORTS: [string, string][] = [
     ['football', 'Football'], ['basketball', 'Basketball'], ['american-football', 'American Football'],
@@ -55,7 +56,11 @@ builder.defineMetaHandler(async ({ id }: any) => {
     return { meta: m ? toMeta(m) : null, cacheMaxAge: 60 };
 });
 
-let addonBase = process.env.PUBLIC_URL || '';
+// Base URL of this server as seen by the caller. Resolved per request (never shared between
+// requests) so one client's Host header can't change the links handed to another.
+const requestBase = new AsyncLocalStorage<string>();
+const baseOf = (req: express.Request) => process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+const addonBase = () => requestBase.getStore() || process.env.PUBLIC_URL || '';
 
 builder.defineStreamHandler(async ({ id }: any) => {
     const m = await getMatch(id.replace(/^streamed:/, ''));
@@ -64,17 +69,14 @@ builder.defineStreamHandler(async ({ id }: any) => {
     const streams = lists.flat().sort((a, b) => b.viewers - a.viewers).map((s) => ({
         name: `Streamed${s.hd ? ' HD' : ''}`,
         title: `${s.source} #${s.streamNo} • ${s.language}\n👁 ${s.viewers}`,
-        url: `${addonBase}/play/${Buffer.from(s.embedUrl).toString('base64url')}.m3u8`,
+        url: `${addonBase()}/play/${Buffer.from(s.embedUrl).toString('base64url')}.m3u8`,
     }));
     return { streams, cacheMaxAge: 15 };
 });
 
 const app = express();
 app.set('trust proxy', true);
-app.use((req, _res, next) => {
-    if (!process.env.PUBLIC_URL) addonBase = `${req.protocol}://${req.get('host')}`;
-    next();
-});
+app.use((req, _res, next) => requestBase.run(baseOf(req), next));
 
 // Lazy resolution: the embed page is only opened when the user actually hits play.
 app.get('/play/:e.m3u8', async (req, res) => {
@@ -82,7 +84,7 @@ app.get('/play/:e.m3u8', async (req, res) => {
         const embedUrl = Buffer.from(req.params.e, 'base64url').toString();
         if (!/^https:\/\/embed\.st\//.test(embedUrl)) return res.sendStatus(400);
         const { url, headers } = await extractM3u8(embedUrl);
-        await proxyFetch(url, headers, addonBase, res);
+        await proxyFetch(url, headers, baseOf(req), res);
     } catch (e: any) {
         console.error('[play]', e.message);
         res.status(502).send(e.message);
@@ -93,7 +95,7 @@ app.get('/proxy/:token', async (req, res) => {
     const t = decodeToken(req.params.token.replace(/\.m3u8$/, ''));
     if (!t) return res.sendStatus(400);
     try {
-        await proxyFetch(t.u, t.h, addonBase, res, req.headers.range as string | undefined);
+        await proxyFetch(t.u, t.h, baseOf(req), res, req.headers.range as string | undefined);
     } catch (e: any) {
         if (!res.headersSent) res.sendStatus(502);
     }
