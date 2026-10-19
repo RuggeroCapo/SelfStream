@@ -110,6 +110,10 @@ export async function getVixSrcStreams(tmdbId: string, season?: string, episode?
         const canPlayFHD = /window\.canPlayFHD\s*=\s*true/i.test(scriptContent) || /canPlayFHD/.test(scriptContent);
         
         const urlObj = new URL(serverUrl);
+        // vixsrc.to now hands out dead obfuscated CDN hosts (*.boats); the same token on
+        // vixcloud.cc (with scz=1, as the StreamingCommunity player does) yields working hosts.
+        urlObj.hostname = config.vixcloudDomain;
+        urlObj.searchParams.set('scz', '1');
         const lang = preferredLang || 'en';
         urlObj.searchParams.set('token', token);
         urlObj.searchParams.set('expires', expires);
