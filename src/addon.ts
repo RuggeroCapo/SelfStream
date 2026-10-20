@@ -147,33 +147,43 @@ async function handleStream(type: string, id: string, userConfig: UserConfig): P
                 }
             } catch { /* proceed without title */ }
 
+            // Sources run in parallel with a timeout so one slow source can't block the others
+            const SOURCE_TIMEOUT_MS = 8000;
+            const withTimeout = <T>(p: Promise<T>, label: string): Promise<T> =>
+                Promise.race([
+                    p,
+                    new Promise<T>((_, reject) =>
+                        setTimeout(() => reject(new Error(`${label} timed out after ${SOURCE_TIMEOUT_MS}ms`)), SOURCE_TIMEOUT_MS)),
+                ]);
+
             // ── VixSrc ──
-            if (userConfig.vixEnabled) {
-                try {
-                    const vixStreams = await getVixSrcStreams(tmdbId, season, episode, userConfig.vixLang);
-                    for (const s of vixStreams) {
-                        s.name = 'VixSrc 🤌';
-                        s.title = `🎬 ${mediaTitle || 'Stream'}`;
-                    }
-                    allStreams.push(...vixStreams);
-                } catch (err) {
-                    console.error("[VixSrc] error:", err);
-                }
-            }
+            const vixTask = userConfig.vixEnabled
+                ? withTimeout(getVixSrcStreams(tmdbId, season, episode, userConfig.vixLang), 'VixSrc')
+                    .then(streams => {
+                        for (const s of streams) {
+                            s.name = 'VixSrc 🤌';
+                            s.title = `🎬 ${mediaTitle || 'Stream'}`;
+                        }
+                        return streams;
+                    })
+                    .catch(err => { console.error("[VixSrc] error:", err); return []; })
+                : Promise.resolve([]);
 
             // ── CinemaCity ──
-            if (userConfig.cinemacityEnabled) {
-                try {
-                    const ccStreams = await getCinemaCityStreams(tmdbId, type, season, episode, userConfig.cinemacityLang);
-                    for (const s of ccStreams) {
-                        s.name = 'CinemaCity 🤌';
-                        s.title = `🎬 ${mediaTitle || 'Stream'}`;
-                    }
-                    allStreams.push(...ccStreams);
-                } catch (err) {
-                    console.error("[CinemaCity] error:", err);
-                }
-            }
+            const ccTask = userConfig.cinemacityEnabled
+                ? withTimeout(getCinemaCityStreams(tmdbId, type, season, episode, userConfig.cinemacityLang), 'CinemaCity')
+                    .then(streams => {
+                        for (const s of streams) {
+                            s.name = 'CinemaCity 🤌';
+                            s.title = `🎬 ${mediaTitle || 'Stream'}`;
+                        }
+                        return streams;
+                    })
+                    .catch(err => { console.error("[CinemaCity] error:", err); return []; })
+                : Promise.resolve([]);
+
+            const [vixStreams, ccStreams] = await Promise.all([vixTask, ccTask]);
+            allStreams.push(...vixStreams, ...ccStreams);
         }
     } catch (err) {
         console.error("Handler error:", err);
