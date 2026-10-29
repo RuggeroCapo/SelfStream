@@ -58,11 +58,12 @@ Change the host port with `SELFSTREAM_LOCAL_PORT` in `.env`.
 
 #### Optional: route traffic through ProtonVPN (Gluetun)
 
-1. In your [Proton account](https://account.proton.me/u/0/vpn/WireGuard), create a WireGuard configuration and copy its `PrivateKey`.
+1. In your [Proton account](https://account.proton.me/u/0/vpn/OpenVpnIKEv2), copy the **OpenVPN / IKEv2 username and password** (not your Proton login).
 2. Add it to `.env`:
 
    ```bash
-   PROTONVPN_WIREGUARD_PRIVATE_KEY=your_private_key
+   PROTONVPN_OPENVPN_USER=your_openvpn_username
+   PROTONVPN_OPENVPN_PASSWORD=your_openvpn_password
    PROTONVPN_SERVER_COUNTRIES=Netherlands   # optional
    PROTONVPN_FREE_ONLY=on                    # only if you use a free Proton plan
    ```
