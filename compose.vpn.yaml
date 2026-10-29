@@ -1,0 +1,27 @@
+# Routes all SelfStream traffic through ProtonVPN via Gluetun.
+# Usage: docker compose -f compose.yaml -f compose.vpn.yaml up -d --build
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${SELFSTREAM_LOCAL_PORT:-7000}:7000"
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${PROTONVPN_WIREGUARD_PRIVATE_KEY:?set PROTONVPN_WIREGUARD_PRIVATE_KEY in .env}
+      SERVER_COUNTRIES: ${PROTONVPN_SERVER_COUNTRIES:-}
+      FREE_ONLY: ${PROTONVPN_FREE_ONLY:-off}
+      TZ: ${TZ:-UTC}
+
+  selfstream:
+    # The app shares Gluetun's network namespace, so the port is published on gluetun.
+    network_mode: "service:gluetun"
+    ports: !reset []
+    depends_on:
+      gluetun:
+        condition: service_healthy

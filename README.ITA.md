@@ -56,6 +56,25 @@ tailscale funnel --bg 7000     # pubblico
 
 Cambia la porta dell'host con `SELFSTREAM_LOCAL_PORT` in `.env`.
 
+#### Opzionale: instrada il traffico tramite ProtonVPN (Gluetun)
+
+1. Nel tuo [account Proton](https://account.proton.me/u/0/vpn/WireGuard) crea una configurazione WireGuard e copia la `PrivateKey`.
+2. Aggiungila a `.env`:
+
+   ```bash
+   PROTONVPN_WIREGUARD_PRIVATE_KEY=la_tua_private_key
+   PROTONVPN_SERVER_COUNTRIES=Netherlands   # opzionale
+   PROTONVPN_FREE_ONLY=on                    # solo se usi un piano Proton gratuito
+   ```
+
+3. Avvia la stack con l'override VPN:
+
+   ```bash
+   docker compose -f compose.yaml -f compose.vpn.yaml up -d --build
+   ```
+
+Tutto il traffico in uscita di SelfStream passa dal tunnel. Se la VPN cade, il kill switch di Gluetun blocca il traffico invece di esporre il tuo IP. Il manifest resta `http://127.0.0.1:7000/manifest.json`.
+
 ### Consigliato: VPS / Raspberry Pi (Massima compatibilità)
 
 Un server persistente è l'opzione più affidabile — mantiene la cache proxy in memoria e evita i blocchi IP dei provider cloud.
